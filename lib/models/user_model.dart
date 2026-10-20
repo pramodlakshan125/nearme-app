@@ -6,6 +6,7 @@ class UserModel {
   final String email;
   final String photoUrl;
   final String facebookUrl;
+  final String bio;
   final DateTime createdAt;
   final DateTime lastActive;
 
@@ -15,6 +16,7 @@ class UserModel {
     required this.email,
     required this.photoUrl,
     required this.facebookUrl,
+    this.bio = '',
     required this.createdAt,
     required this.lastActive,
   });
@@ -26,6 +28,7 @@ class UserModel {
       email: map['email'] ?? '',
       photoUrl: map['photoUrl'] ?? '',
       facebookUrl: map['facebookUrl'] ?? '',
+      bio: map['bio'] ?? '',
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastActive: (map['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -38,6 +41,7 @@ class UserModel {
       'email': email,
       'photoUrl': photoUrl,
       'facebookUrl': facebookUrl,
+      'bio': bio,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastActive': Timestamp.fromDate(lastActive),
     };
@@ -48,6 +52,7 @@ class UserModel {
     String? email,
     String? photoUrl,
     String? facebookUrl,
+    String? bio,
     DateTime? lastActive,
   }) {
     return UserModel(
@@ -56,6 +61,7 @@ class UserModel {
       email: email ?? this.email,
       photoUrl: photoUrl ?? this.photoUrl,
       facebookUrl: facebookUrl ?? this.facebookUrl,
+      bio: bio ?? this.bio,
       createdAt: createdAt,
       lastActive: lastActive ?? this.lastActive,
     );

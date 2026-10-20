@@ -1,6 +1,7 @@
 {
   "project_info": {
     "project_number": "284300412419",
+    "firebase_url": "https://near-me-39080-default-rtdb.firebaseio.com",
     "project_id": "near-me-39080",
     "storage_bucket": "near-me-39080.firebasestorage.app"
   },
@@ -12,7 +13,20 @@
           "package_name": "com.example.near_me"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "284300412419-2unmiqf6cve4m4f0dbm1vsn9nh7c3v1q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.near_me",
+            "certificate_hash": "71b557c8ba365ed5877f2d677e315ed2731fe06b"
+          }
+        },
+        {
+          "client_id": "284300412419-mu6g437jme0ee4ejke9elacp5plhmtg8.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyDNrc9E92J5QFATYNpsr0iimGbl17XcxZc"
@@ -20,7 +34,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "284300412419-mu6g437jme0ee4ejke9elacp5plhmtg8.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "284300412419-fbt8k3o6qi6t4egc4ogb464lo5ppl3la.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.nearMe"
+              }
+            }
+          ]
         }
       }
     }

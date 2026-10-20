@@ -56,7 +56,6 @@ class DefaultFirebaseOptions {
     projectId: 'near-me-39080',
     storageBucket: 'near-me-39080.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBIPiuEgYn6SmBwI9Tc2T5mHZi_FSzI2Kk',
     appId: '1:284300412419:ios:63e0f7d15c0ce32503f036',
@@ -65,7 +64,6 @@ class DefaultFirebaseOptions {
     storageBucket: 'near-me-39080.firebasestorage.app',
     iosBundleId: 'com.example.nearMe',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyBIPiuEgYn6SmBwI9Tc2T5mHZi_FSzI2Kk',
     appId: '1:284300412419:ios:63e0f7d15c0ce32503f036',
