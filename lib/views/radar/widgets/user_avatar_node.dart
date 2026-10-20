@@ -25,7 +25,7 @@ class UserAvatarNode extends StatelessWidget {
               border: Border.all(color: Colors.cyanAccent, width: 2),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.cyanAccent.withOpacity(0.4),
+                  color: Colors.cyanAccent.withValues(alpha: 0.4),
                   blurRadius: 10,
                   spreadRadius: 2,
                 ),
@@ -33,9 +33,8 @@ class UserAvatarNode extends StatelessWidget {
             ),
             child: CircleAvatar(
               radius: 22,
-              backgroundImage: user.photoUrl.isNotEmpty
-                  ? NetworkImage(user.photoUrl)
-                  : null,
+              backgroundImage:
+                  user.photoUrl.isNotEmpty ? NetworkImage(user.photoUrl) : null,
               backgroundColor: Colors.cyan.shade900,
               child: user.photoUrl.isEmpty
                   ? Text(

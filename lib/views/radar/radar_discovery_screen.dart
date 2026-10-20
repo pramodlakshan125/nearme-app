@@ -183,7 +183,8 @@ class RadarDiscoveryScreen extends ConsumerWidget {
                                 padding: const EdgeInsets.all(4),
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
-                                  color: Colors.cyanAccent.withOpacity(0.2),
+                                  color:
+                                      Colors.cyanAccent.withValues(alpha: 0.2),
                                   border: Border.all(
                                       color: Colors.cyanAccent, width: 2),
                                 ),

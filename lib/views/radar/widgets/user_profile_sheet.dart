@@ -88,9 +88,9 @@ class UserProfileSheet extends ConsumerWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              Row(
+              const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
+                children: [
                   Icon(Icons.bluetooth_searching,
                       size: 16, color: Colors.cyanAccent),
                   SizedBox(width: 6),
@@ -107,7 +107,7 @@ class UserProfileSheet extends ConsumerWidget {
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.green.shade900.withOpacity(0.4),
+                    color: Colors.green.shade900.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.greenAccent),
                   ),
@@ -163,8 +163,8 @@ class UserProfileSheet extends ConsumerWidget {
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(color: Colors.white24),
                   ),
-                  child: Row(
-                    children: const [
+                  child: const Row(
+                    children: [
                       Icon(Icons.lock, color: Colors.amberAccent),
                       SizedBox(width: 12),
                       Expanded(
@@ -187,7 +187,8 @@ class UserProfileSheet extends ConsumerWidget {
                         borderRadius: BorderRadius.circular(25),
                       ),
                     ),
-                    icon: const Icon(Icons.hourglass_top, color: Colors.white70),
+                    icon:
+                        const Icon(Icons.hourglass_top, color: Colors.white70),
                     label: const Text(
                       'Connection Request Pending',
                       style: TextStyle(color: Colors.white70),

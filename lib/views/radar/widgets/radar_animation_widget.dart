@@ -77,12 +77,12 @@ class _RadarPainter extends CustomPainter {
     final maxRadius = math.min(size.width, size.height) / 2;
 
     final circlePaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.15)
+      ..color = Colors.cyanAccent.withValues(alpha: 0.15)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.5;
 
     final axisPaint = Paint()
-      ..color = Colors.cyanAccent.withOpacity(0.1)
+      ..color = Colors.cyanAccent.withValues(alpha: 0.1)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.0;
 
@@ -105,8 +105,8 @@ class _RadarPainter extends CustomPainter {
           startAngle: 0.0,
           endAngle: math.pi / 2,
           colors: [
-            Colors.cyanAccent.withOpacity(0.0),
-            Colors.cyanAccent.withOpacity(0.35),
+            Colors.cyanAccent.withValues(alpha: 0.0),
+            Colors.cyanAccent.withValues(alpha: 0.35),
           ],
           transform: GradientRotation(angle),
         ).createShader(Rect.fromCircle(center: center, radius: maxRadius));

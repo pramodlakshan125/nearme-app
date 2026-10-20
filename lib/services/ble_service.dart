@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -25,7 +26,10 @@ class BleDiscoveryService {
     final statusBleConnect = await Permission.bluetoothConnect.request();
 
     return statusLocation.isGranted &&
-        (statusBleScan.isGranted || await Permission.bluetooth.request().isGranted);
+        statusBleAdvertise.isGranted &&
+        statusBleConnect.isGranted &&
+        (statusBleScan.isGranted ||
+            await Permission.bluetooth.request().isGranted);
   }
 
   void startScanning() {
@@ -41,7 +45,7 @@ class BleDiscoveryService {
         _discoveredDevicesController.add(_discoveredDevicesMap.values.toList());
       }
     }, onError: (Object error) {
-      print('BLE Scan error: $error');
+      debugPrint('BLE Scan error: $error');
     });
   }
 
