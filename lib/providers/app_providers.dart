@@ -44,3 +44,45 @@ final incomingRequestsProvider =
       .watch(databaseServiceProvider)
       .streamIncomingRequests(currentUser.uid);
 });
+
+// Accepted Connections Stream
+final acceptedConnectionsProvider =
+    StreamProvider<List<ConnectionRequestModel>>((ref) {
+  final currentUser = ref.watch(currentUserModelProvider).value;
+  if (currentUser == null) return Stream.value([]);
+  return ref
+      .watch(databaseServiceProvider)
+      .streamAcceptedConnections(currentUser.uid);
+});
+
+// Helper model representing a connected friend
+class ConnectedAccount {
+  final ConnectionRequestModel request;
+  final UserModel otherUser;
+
+  ConnectedAccount({
+    required this.request,
+    required this.otherUser,
+  });
+}
+
+// Connected Accounts with full UserModel loaded
+final connectedAccountsProvider =
+    FutureProvider<List<ConnectedAccount>>((ref) async {
+  final requests = await ref.watch(acceptedConnectionsProvider.future);
+  final db = ref.watch(databaseServiceProvider);
+  final currentUser = ref.watch(currentUserModelProvider).value;
+
+  if (currentUser == null || requests.isEmpty) return [];
+
+  final List<ConnectedAccount> accounts = [];
+  for (final req in requests) {
+    final otherId =
+        req.senderId == currentUser.uid ? req.receiverId : req.senderId;
+    final user = await db.getUser(otherId);
+    if (user != null) {
+      accounts.add(ConnectedAccount(request: req, otherUser: user));
+    }
+  }
+  return accounts;
+});

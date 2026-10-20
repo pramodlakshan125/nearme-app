@@ -21,11 +21,22 @@ dependencies:
   permission_handler: ^11.3.1
   url_launcher: ^6.3.0
   firebase_app_check: ^0.3.2+10
+  image_picker: ^1.2.4
+  firebase_storage: ^12.4.10
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^3.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/NearMe.png
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/NearMe.png"
+  remove_alpha_ios: true

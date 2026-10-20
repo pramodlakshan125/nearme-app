@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../models/user_model.dart';
 import '../models/active_session_model.dart';
@@ -50,6 +51,7 @@ class DatabaseService {
       return snapshot.docs
           .where((doc) => doc.id != currentUid)
           .map((doc) => UserModel.fromMap(doc.data(), doc.id))
+          .where((user) => user.isVisible)
           .toList();
     });
   }
@@ -83,12 +85,12 @@ class DatabaseService {
         .where(FieldPath.documentId, whereIn: [id1, id2])
         .snapshots()
         .map((snapshot) {
-      if (snapshot.docs.isEmpty) return null;
-      return ConnectionRequestModel.fromMap(
-        snapshot.docs.first.data(),
-        snapshot.docs.first.id,
-      );
-    });
+          if (snapshot.docs.isEmpty) return null;
+          return ConnectionRequestModel.fromMap(
+            snapshot.docs.first.data(),
+            snapshot.docs.first.id,
+          );
+        });
   }
 
   Stream<List<ConnectionRequestModel>> streamIncomingRequests(String userId) {
@@ -104,11 +106,75 @@ class DatabaseService {
     });
   }
 
+  Stream<List<ConnectionRequestModel>> streamAcceptedConnections(
+      String userId) {
+    final receiverStream = _db
+        .collection('connection_requests')
+        .where('receiverId', isEqualTo: userId)
+        .where('status', isEqualTo: RequestStatus.accepted.name)
+        .snapshots();
+
+    final senderStream = _db
+        .collection('connection_requests')
+        .where('senderId', isEqualTo: userId)
+        .where('status', isEqualTo: RequestStatus.accepted.name)
+        .snapshots();
+
+    final controller = StreamController<List<ConnectionRequestModel>>();
+    List<ConnectionRequestModel> receiverList = [];
+    List<ConnectionRequestModel> senderList = [];
+
+    void emitMerged() {
+      final map = <String, ConnectionRequestModel>{};
+      for (final r in receiverList) {
+        map[r.requestId] = r;
+      }
+      for (final r in senderList) {
+        map[r.requestId] = r;
+      }
+      final merged = map.values.toList()
+        ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      if (!controller.isClosed) {
+        controller.add(merged);
+      }
+    }
+
+    StreamSubscription? sub1;
+    StreamSubscription? sub2;
+
+    controller.onListen = () {
+      sub1 = receiverStream.listen((snapshot) {
+        receiverList = snapshot.docs
+            .map((doc) => ConnectionRequestModel.fromMap(doc.data(), doc.id))
+            .toList();
+        emitMerged();
+      }, onError: controller.addError);
+
+      sub2 = senderStream.listen((snapshot) {
+        senderList = snapshot.docs
+            .map((doc) => ConnectionRequestModel.fromMap(doc.data(), doc.id))
+            .toList();
+        emitMerged();
+      }, onError: controller.addError);
+    };
+
+    controller.onCancel = () {
+      sub1?.cancel();
+      sub2?.cancel();
+    };
+
+    return controller.stream;
+  }
+
   Future<void> updateRequestStatus(
       String requestId, RequestStatus status) async {
     await _db
         .collection('connection_requests')
         .doc(requestId)
         .update({'status': status.name});
+  }
+
+  Future<void> removeConnection(String requestId) async {
+    await _db.collection('connection_requests').doc(requestId).delete();
   }
 }

@@ -7,6 +7,7 @@ class UserModel {
   final String photoUrl;
   final String facebookUrl;
   final String bio;
+  final bool isVisible;
   final DateTime createdAt;
   final DateTime lastActive;
 
@@ -17,6 +18,7 @@ class UserModel {
     required this.photoUrl,
     required this.facebookUrl,
     this.bio = '',
+    this.isVisible = true,
     required this.createdAt,
     required this.lastActive,
   });
@@ -29,6 +31,7 @@ class UserModel {
       photoUrl: map['photoUrl'] ?? '',
       facebookUrl: map['facebookUrl'] ?? '',
       bio: map['bio'] ?? '',
+      isVisible: map['isVisible'] as bool? ?? true,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastActive: (map['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
@@ -42,6 +45,7 @@ class UserModel {
       'photoUrl': photoUrl,
       'facebookUrl': facebookUrl,
       'bio': bio,
+      'isVisible': isVisible,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastActive': Timestamp.fromDate(lastActive),
     };
@@ -53,6 +57,7 @@ class UserModel {
     String? photoUrl,
     String? facebookUrl,
     String? bio,
+    bool? isVisible,
     DateTime? lastActive,
   }) {
     return UserModel(
@@ -62,6 +67,7 @@ class UserModel {
       photoUrl: photoUrl ?? this.photoUrl,
       facebookUrl: facebookUrl ?? this.facebookUrl,
       bio: bio ?? this.bio,
+      isVisible: isVisible ?? this.isVisible,
       createdAt: createdAt,
       lastActive: lastActive ?? this.lastActive,
     );

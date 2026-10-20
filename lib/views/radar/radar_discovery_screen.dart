@@ -6,6 +6,7 @@ import '../../models/active_session_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/app_providers.dart';
 import '../requests/incoming_requests_sheet.dart';
+import '../profile/profile_settings_screen.dart';
 import 'widgets/radar_animation_widget.dart';
 import 'widgets/user_avatar_node.dart';
 import 'widgets/user_profile_sheet.dart';
@@ -86,26 +87,42 @@ class RadarDiscoveryScreen extends ConsumerWidget {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: Row(
-          children: [
-            CircleAvatar(
-              radius: 18,
-              backgroundImage: currentUser?.photoUrl.isNotEmpty == true
-                  ? NetworkImage(currentUser!.photoUrl)
-                  : null,
-              child: currentUser?.photoUrl.isEmpty == true
-                  ? Text(currentUser?.displayName[0].toUpperCase() ?? 'U')
-                  : null,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                currentUser?.displayName ?? 'NearMe',
-                style: const TextStyle(fontSize: 16, color: Colors.white),
-                overflow: TextOverflow.ellipsis,
+        title: Tooltip(
+          message: 'Profile & Settings',
+          child: InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const ProfileSettingsScreen(),
               ),
             ),
-          ],
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundImage: currentUser?.photoUrl.isNotEmpty == true
+                      ? NetworkImage(currentUser!.photoUrl)
+                      : null,
+                  child: currentUser?.photoUrl.isEmpty == true
+                      ? Text(
+                          currentUser?.displayName.isNotEmpty == true
+                              ? currentUser!.displayName[0].toUpperCase()
+                              : 'U',
+                        )
+                      : null,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    currentUser?.displayName ?? 'NearMe',
+                    style: const TextStyle(fontSize: 16, color: Colors.white),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
         actions: [
           Stack(
