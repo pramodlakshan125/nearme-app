@@ -231,6 +231,10 @@ class _ConnectedHistoryScreenState
 
   Widget _buildConnectionCard(BuildContext context, ConnectedAccount item) {
     final user = item.otherUser;
+    final sharedProfile = ref.watch(sharedProfileProvider(user.uid)).value;
+    final facebookUrl = sharedProfile?.facebookUrl ?? '';
+    final phoneNumber = sharedProfile?.phoneNumber ?? '';
+    final bio = sharedProfile?.bio ?? '';
     final dateStr =
         '${item.request.timestamp.day}/${item.request.timestamp.month}/${item.request.timestamp.year}';
 
@@ -291,10 +295,10 @@ class _ConnectedHistoryScreenState
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        if (user.bio.isNotEmpty) ...[
+                        if (bio.isNotEmpty) ...[
                           const SizedBox(height: 2),
                           Text(
-                            user.bio,
+                            bio,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
@@ -326,21 +330,24 @@ class _ConnectedHistoryScreenState
                       if (val == 'disconnect') {
                         _confirmDisconnect(context, item);
                       } else if (val == 'copy') {
-                        _copyToClipboard(user.facebookUrl);
+                        if (facebookUrl.isNotEmpty) {
+                          _copyToClipboard(facebookUrl);
+                        }
                       }
                     },
                     itemBuilder: (ctx) => [
-                      const PopupMenuItem(
-                        value: 'copy',
-                        child: Row(
-                          children: [
-                            Icon(Icons.copy, size: 18, color: Colors.white70),
-                            SizedBox(width: 10),
-                            Text('Copy Link',
-                                style: TextStyle(color: Colors.white)),
-                          ],
+                      if (facebookUrl.isNotEmpty)
+                        const PopupMenuItem(
+                          value: 'copy',
+                          child: Row(
+                            children: [
+                              Icon(Icons.copy, size: 18, color: Colors.white70),
+                              SizedBox(width: 10),
+                              Text('Copy Link',
+                                  style: TextStyle(color: Colors.white)),
+                            ],
+                          ),
                         ),
-                      ),
                       const PopupMenuItem(
                         value: 'disconnect',
                         child: Row(
@@ -358,58 +365,72 @@ class _ConnectedHistoryScreenState
                 ],
               ),
               const SizedBox(height: 12),
-              // Facebook Link Action Button
-              Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF1877F2).withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                      color: const Color(0xFF1877F2).withValues(alpha: 0.4)),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(12),
-                        onTap: () => _launchUrl(user.facebookUrl),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 10),
-                          child: Row(
-                            children: [
-                              const Icon(Icons.facebook,
-                                  color: Color(0xFF1877F2), size: 22),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  user.facebookUrl,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.cyanAccent,
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w500,
-                                    decoration: TextDecoration.underline,
-                                    decorationColor: Colors.cyanAccent,
+              if (facebookUrl.isNotEmpty)
+                Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1877F2).withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                        color: const Color(0xFF1877F2).withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(12),
+                          onTap: () => _launchUrl(facebookUrl),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 10),
+                            child: Row(
+                              children: [
+                                const Icon(Icons.facebook,
+                                    color: Color(0xFF1877F2), size: 22),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    facebookUrl,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      color: Colors.cyanAccent,
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      decoration: TextDecoration.underline,
+                                      decorationColor: Colors.cyanAccent,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              const Icon(Icons.open_in_new,
-                                  size: 16, color: Colors.cyanAccent),
-                            ],
+                                const Icon(Icons.open_in_new,
+                                    size: 16, color: Colors.cyanAccent),
+                              ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.copy,
-                          size: 18, color: Colors.white70),
-                      tooltip: 'Copy Facebook link',
-                      onPressed: () => _copyToClipboard(user.facebookUrl),
-                    ),
-                  ],
+                      IconButton(
+                        icon: const Icon(Icons.copy,
+                            size: 18, color: Colors.white70),
+                        tooltip: 'Copy Facebook link',
+                        onPressed: () => _copyToClipboard(facebookUrl),
+                      ),
+                    ],
+                  ),
                 ),
-              ),
+              if (phoneNumber.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: OutlinedButton.icon(
+                    onPressed: () => launchUrl(
+                      Uri(scheme: 'tel', path: phoneNumber),
+                    ),
+                    icon: const Icon(Icons.phone, color: Colors.greenAccent),
+                    label: Text(
+                      phoneNumber,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

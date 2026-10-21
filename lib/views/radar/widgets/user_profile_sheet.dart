@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../models/connection_request_model.dart';
+import '../../../models/private_profile_model.dart';
 import '../../../models/user_model.dart';
 import '../../../providers/app_providers.dart';
+import '../../../services/database_service.dart';
 
 class UserProfileSheet extends ConsumerWidget {
   final UserModel nearbyUser;
@@ -22,6 +24,96 @@ class UserProfileSheet extends ConsumerWidget {
         );
       }
     }
+  }
+
+  Widget _buildAcceptedProfile(
+    BuildContext context,
+    String userId,
+    DatabaseService databaseService,
+  ) {
+    return StreamBuilder<PrivateProfileModel?>(
+      stream: databaseService.streamSharedProfile(userId),
+      builder: (context, snapshot) {
+        if (snapshot.hasError) {
+          return Text(
+            'Could not load shared profile: ${snapshot.error}',
+            style: const TextStyle(color: Colors.redAccent),
+          );
+        }
+        if (!snapshot.hasData) {
+          return const CircularProgressIndicator(color: Colors.cyanAccent);
+        }
+
+        final profile = snapshot.data;
+        final hasSharedDetails = profile != null &&
+            (profile.facebookUrl.isNotEmpty ||
+                profile.phoneNumber.isNotEmpty ||
+                profile.bio.isNotEmpty);
+        if (!hasSharedDetails) {
+          return const Text(
+            'This person has not shared any contact details.',
+            style: TextStyle(color: Colors.white70),
+            textAlign: TextAlign.center,
+          );
+        }
+
+        return Column(
+          children: [
+            if (profile.bio.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  profile.bio,
+                  style: const TextStyle(color: Colors.white70),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            if (profile.phoneNumber.isNotEmpty)
+              Row(
+                children: [
+                  const Icon(Icons.phone, color: Colors.greenAccent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      profile.phoneNumber,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Call',
+                    icon: const Icon(Icons.call, color: Colors.greenAccent),
+                    onPressed: () => launchUrl(
+                      Uri(scheme: 'tel', path: profile.phoneNumber),
+                    ),
+                  ),
+                ],
+              ),
+            if (profile.facebookUrl.isNotEmpty) ...[
+              Text(
+                profile.facebookUrl,
+                style: const TextStyle(color: Colors.white70),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: () =>
+                    _launchFacebookUrl(context, profile.facebookUrl),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF1877F2),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                ),
+                icon: const Icon(Icons.open_in_new),
+                label: const Text('Open Facebook Profile'),
+              ),
+            ],
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -128,32 +220,13 @@ class UserProfileSheet extends ConsumerWidget {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      Text(
-                        nearbyUser.facebookUrl,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 13,
-                          decoration: TextDecoration.underline,
-                        ),
-                        textAlign: TextAlign.center,
+                      _buildAcceptedProfile(
+                        context,
+                        nearbyUser.uid,
+                        dbService,
                       ),
                     ],
                   ),
-                ),
-                const SizedBox(height: 20),
-                ElevatedButton.icon(
-                  onPressed: () =>
-                      _launchFacebookUrl(context, nearbyUser.facebookUrl),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1877F2), // Facebook Blue
-                    foregroundColor: Colors.white,
-                    minimumSize: const Size.fromHeight(50),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(25),
-                    ),
-                  ),
-                  icon: const Icon(Icons.open_in_new),
-                  label: const Text('Open Facebook Profile'),
                 ),
               ] else ...[
                 Container(
@@ -169,7 +242,7 @@ class UserProfileSheet extends ConsumerWidget {
                       SizedBox(width: 12),
                       Expanded(
                         child: Text(
-                          'Facebook profile link is hidden until the connection request is accepted.',
+                          'Contact details are hidden until the connection request is accepted.',
                           style: TextStyle(color: Colors.white70, fontSize: 13),
                         ),
                       ),

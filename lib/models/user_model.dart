@@ -3,10 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 class UserModel {
   final String uid;
   final String displayName;
-  final String email;
   final String photoUrl;
-  final String facebookUrl;
-  final String bio;
   final bool isVisible;
   final DateTime createdAt;
   final DateTime lastActive;
@@ -14,10 +11,7 @@ class UserModel {
   UserModel({
     required this.uid,
     required this.displayName,
-    required this.email,
     required this.photoUrl,
-    required this.facebookUrl,
-    this.bio = '',
     this.isVisible = true,
     required this.createdAt,
     required this.lastActive,
@@ -27,10 +21,7 @@ class UserModel {
     return UserModel(
       uid: id,
       displayName: map['displayName'] ?? '',
-      email: map['email'] ?? '',
       photoUrl: map['photoUrl'] ?? '',
-      facebookUrl: map['facebookUrl'] ?? '',
-      bio: map['bio'] ?? '',
       isVisible: map['isVisible'] as bool? ?? true,
       createdAt: (map['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       lastActive: (map['lastActive'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -41,10 +32,7 @@ class UserModel {
     return {
       'uid': uid,
       'displayName': displayName,
-      'email': email,
       'photoUrl': photoUrl,
-      'facebookUrl': facebookUrl,
-      'bio': bio,
       'isVisible': isVisible,
       'createdAt': Timestamp.fromDate(createdAt),
       'lastActive': Timestamp.fromDate(lastActive),
@@ -53,20 +41,14 @@ class UserModel {
 
   UserModel copyWith({
     String? displayName,
-    String? email,
     String? photoUrl,
-    String? facebookUrl,
-    String? bio,
     bool? isVisible,
     DateTime? lastActive,
   }) {
     return UserModel(
       uid: uid,
       displayName: displayName ?? this.displayName,
-      email: email ?? this.email,
       photoUrl: photoUrl ?? this.photoUrl,
-      facebookUrl: facebookUrl ?? this.facebookUrl,
-      bio: bio ?? this.bio,
       isVisible: isVisible ?? this.isVisible,
       createdAt: createdAt,
       lastActive: lastActive ?? this.lastActive,

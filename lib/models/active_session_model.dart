@@ -2,15 +2,13 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 
 class ActiveSessionModel {
   final String uid;
-  final String bleDeviceId;
-  final String serviceUuid;
+  final String discoveryToken;
   final DateTime lastSeen;
   final bool isBroadcasting;
 
   ActiveSessionModel({
     required this.uid,
-    required this.bleDeviceId,
-    required this.serviceUuid,
+    required this.discoveryToken,
     required this.lastSeen,
     required this.isBroadcasting,
   });
@@ -18,8 +16,7 @@ class ActiveSessionModel {
   factory ActiveSessionModel.fromMap(Map<String, dynamic> map, String id) {
     return ActiveSessionModel(
       uid: id,
-      bleDeviceId: map['bleDeviceId'] ?? '',
-      serviceUuid: map['serviceUuid'] ?? '',
+      discoveryToken: map['discoveryToken'] ?? '',
       lastSeen: (map['lastSeen'] as Timestamp?)?.toDate() ?? DateTime.now(),
       isBroadcasting: map['isBroadcasting'] ?? false,
     );
@@ -28,8 +25,7 @@ class ActiveSessionModel {
   Map<String, dynamic> toMap() {
     return {
       'uid': uid,
-      'bleDeviceId': bleDeviceId,
-      'serviceUuid': serviceUuid,
+      'discoveryToken': discoveryToken,
       'lastSeen': Timestamp.fromDate(lastSeen),
       'isBroadcasting': isBroadcasting,
     };

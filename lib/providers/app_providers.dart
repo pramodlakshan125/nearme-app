@@ -1,6 +1,7 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../models/connection_request_model.dart';
+import '../models/private_profile_model.dart';
 import '../models/user_model.dart';
 import '../services/auth_service.dart';
 import '../services/ble_service.dart';
@@ -27,12 +28,34 @@ final currentUserModelProvider = StreamProvider<UserModel?>((ref) {
 
 // BLE Scanning State
 final isScanningProvider = StateProvider<bool>((ref) => false);
+final currentDiscoveryTokenProvider = StateProvider<String?>((ref) => null);
+
+final currentPrivateProfileProvider =
+    StreamProvider<PrivateProfileModel?>((ref) {
+  final authUser = ref.watch(authStateProvider).value;
+  if (authUser == null) return Stream.value(null);
+  return ref.watch(databaseServiceProvider).streamPrivateProfile(authUser.uid);
+});
+
+final bleDiscoveryTokensProvider = StreamProvider<List<String>>((ref) {
+  return ref.watch(bleServiceProvider).discoveredTokensStream;
+});
 
 // Nearby Users Stream
 final nearbyUsersProvider = StreamProvider<List<UserModel>>((ref) {
   final currentUser = ref.watch(currentUserModelProvider).value;
-  if (currentUser == null) return Stream.value([]);
-  return ref.watch(databaseServiceProvider).streamActiveUsers(currentUser.uid);
+  final discoveredTokens = ref.watch(bleDiscoveryTokensProvider).value ?? [];
+  if (currentUser == null || discoveredTokens.isEmpty) {
+    return Stream.value([]);
+  }
+  return ref
+      .watch(databaseServiceProvider)
+      .streamNearbyUsers(currentUser.uid, discoveredTokens);
+});
+
+final sharedProfileProvider =
+    StreamProvider.family<PrivateProfileModel?, String>((ref, uid) {
+  return ref.watch(databaseServiceProvider).streamSharedProfile(uid);
 });
 
 // Incoming Requests Stream

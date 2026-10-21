@@ -1,7 +1,7 @@
 import 'dart:math' as math;
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:near_me/services/ble_service.dart';
 import '../../models/active_session_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/app_providers.dart';
@@ -11,10 +11,24 @@ import 'widgets/radar_animation_widget.dart';
 import 'widgets/user_avatar_node.dart';
 import 'widgets/user_profile_sheet.dart';
 
-class RadarDiscoveryScreen extends ConsumerWidget {
+class RadarDiscoveryScreen extends ConsumerStatefulWidget {
   const RadarDiscoveryScreen({super.key});
 
-  Future<void> _toggleDiscovery(BuildContext context, WidgetRef ref) async {
+  @override
+  ConsumerState<RadarDiscoveryScreen> createState() =>
+      _RadarDiscoveryScreenState();
+}
+
+class _RadarDiscoveryScreenState extends ConsumerState<RadarDiscoveryScreen> {
+  Timer? _presenceHeartbeat;
+
+  @override
+  void dispose() {
+    _presenceHeartbeat?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _toggleDiscovery(BuildContext context) async {
     final bleService = ref.read(bleServiceProvider);
     final dbService = ref.read(databaseServiceProvider);
     final isScanning = ref.read(isScanningProvider);
@@ -29,29 +43,120 @@ class RadarDiscoveryScreen extends ConsumerWidget {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text(
-                  'Bluetooth & Location permissions are required for radar discovery'),
+                  'Bluetooth and nearby-device permissions are required for Radar discovery'),
             ),
           );
         }
         return;
       }
 
-      bleService.startScanning();
-      ref.read(isScanningProvider.notifier).state = true;
-
-      // Register Active Session in Firestore
-      final session = ActiveSessionModel(
-        uid: currentUser.uid,
-        bleDeviceId: 'ble_${currentUser.uid.substring(0, 8)}',
-        serviceUuid: BleDiscoveryService.appServiceUuid.toString(),
-        lastSeen: DateTime.now(),
-        isBroadcasting: true,
-      );
-      await dbService.updateActiveSession(session);
+      try {
+        await bleService.startScanning();
+        if (currentUser.isVisible) {
+          await _startPresence(currentUser.uid);
+        }
+        ref.read(isScanningProvider.notifier).state = true;
+        _presenceHeartbeat?.cancel();
+        _presenceHeartbeat = Timer.periodic(
+          const Duration(seconds: 20),
+          (_) => _refreshPresence(),
+        );
+      } catch (error) {
+        bleService.stopScanning();
+        try {
+          await bleService.stopAdvertising();
+        } catch (cleanupError) {
+          debugPrint('BLE advertising cleanup failed: $cleanupError');
+        }
+        ref.read(currentDiscoveryTokenProvider.notifier).state = null;
+        ref.read(isScanningProvider.notifier).state = false;
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                error is TimeoutException
+                    ? 'Turn on Bluetooth and try again.'
+                    : 'Could not start Radar: $error',
+              ),
+            ),
+          );
+        }
+      }
     } else {
       bleService.stopScanning();
-      ref.read(isScanningProvider.notifier).state = false;
-      await dbService.clearActiveSession(currentUser.uid);
+      try {
+        await bleService.stopAdvertising();
+        await dbService.clearActiveSession(currentUser.uid);
+      } catch (error) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Could not stop Radar cleanly: $error')),
+          );
+        }
+      } finally {
+        _presenceHeartbeat?.cancel();
+        _presenceHeartbeat = null;
+        ref.read(currentDiscoveryTokenProvider.notifier).state = null;
+        ref.read(isScanningProvider.notifier).state = false;
+      }
+    }
+  }
+
+  Future<void> _startPresence(String uid) async {
+    final bleService = ref.read(bleServiceProvider);
+    final dbService = ref.read(databaseServiceProvider);
+    final token = bleService.createDiscoveryToken();
+    await bleService.startAdvertising(token);
+    ref.read(currentDiscoveryTokenProvider.notifier).state = token;
+
+    await dbService.updateActiveSession(
+      ActiveSessionModel(
+        uid: uid,
+        discoveryToken: token,
+        lastSeen: DateTime.now(),
+        isBroadcasting: true,
+      ),
+    );
+  }
+
+  Future<void> _refreshPresence() async {
+    final user = ref.read(currentUserModelProvider).value;
+    final token = ref.read(currentDiscoveryTokenProvider);
+    if (user == null || token == null || !user.isVisible) return;
+    try {
+      await ref.read(databaseServiceProvider).updateActiveSession(
+            ActiveSessionModel(
+              uid: user.uid,
+              discoveryToken: token,
+              lastSeen: DateTime.now(),
+              isBroadcasting: true,
+            ),
+          );
+    } catch (error) {
+      debugPrint('Radar presence update failed: $error');
+    }
+  }
+
+  Future<void> _signOut() async {
+    try {
+      if (ref.read(isScanningProvider)) {
+        await _toggleDiscovery(context);
+      } else {
+        await ref.read(bleServiceProvider).stopAdvertising();
+        final currentUser = ref.read(currentUserModelProvider).value;
+        if (currentUser != null) {
+          await ref
+              .read(databaseServiceProvider)
+              .clearActiveSession(currentUser.uid);
+        }
+      }
+      await ref.read(authServiceProvider).signOut();
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not stop Radar: $error')),
+        );
+      }
     }
   }
 
@@ -74,7 +179,7 @@ class RadarDiscoveryScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final currentUser = ref.watch(currentUserModelProvider).value;
     final isScanning = ref.watch(isScanningProvider);
     final nearbyUsersAsync = ref.watch(nearbyUsersProvider);
@@ -155,7 +260,7 @@ class RadarDiscoveryScreen extends ConsumerWidget {
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: Colors.white70),
-            onPressed: () => ref.read(authServiceProvider).signOut(),
+            onPressed: _signOut,
           ),
         ],
       ),
@@ -307,7 +412,7 @@ class RadarDiscoveryScreen extends ConsumerWidget {
               padding:
                   const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
               child: ElevatedButton.icon(
-                onPressed: () => _toggleDiscovery(context, ref),
+                onPressed: () => _toggleDiscovery(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       isScanning ? Colors.redAccent : Colors.cyanAccent,

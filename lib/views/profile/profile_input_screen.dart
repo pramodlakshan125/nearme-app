@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../models/private_profile_model.dart';
 import '../../models/user_model.dart';
 import '../../providers/app_providers.dart';
 
@@ -42,15 +43,18 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
     final user = UserModel(
       uid: authUser.uid,
       displayName: _nameController.text.trim(),
-      email: authUser.email ?? '',
       photoUrl: authUser.photoURL ?? '',
-      facebookUrl: _fbUrlController.text.trim(),
       createdAt: DateTime.now(),
       lastActive: DateTime.now(),
     );
 
     try {
-      await ref.read(databaseServiceProvider).createOrUpdateUser(user);
+      await ref.read(databaseServiceProvider).createOrUpdateUser(
+            user,
+            privateProfile: PrivateProfileModel(
+              facebookUrl: _fbUrlController.text.trim(),
+            ),
+          );
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -90,7 +94,8 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                           : null,
                       backgroundColor: Colors.cyan.shade900,
                       child: authUser?.photoURL == null
-                          ? const Icon(Icons.person, size: 50, color: Colors.white)
+                          ? const Icon(Icons.person,
+                              size: 50, color: Colors.white)
                           : null,
                     ),
                   ),
@@ -101,7 +106,8 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                     decoration: InputDecoration(
                       labelText: 'Display Name',
                       labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(Icons.person_outline, color: Colors.cyanAccent),
+                      prefixIcon: const Icon(Icons.person_outline,
+                          color: Colors.cyanAccent),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: const BorderSide(color: Colors.white30),
@@ -111,8 +117,9 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                         borderSide: const BorderSide(color: Colors.cyanAccent),
                       ),
                     ),
-                    validator: (val) =>
-                        val == null || val.trim().isEmpty ? 'Enter your display name' : null,
+                    validator: (val) => val == null || val.trim().isEmpty
+                        ? 'Enter your display name'
+                        : null,
                   ),
                   const SizedBox(height: 20),
                   TextFormField(
@@ -124,7 +131,8 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                       hintText: 'https://facebook.com/your.profile',
                       hintStyle: const TextStyle(color: Colors.white38),
                       labelStyle: const TextStyle(color: Colors.white70),
-                      prefixIcon: const Icon(Icons.link, color: Colors.cyanAccent),
+                      prefixIcon:
+                          const Icon(Icons.link, color: Colors.cyanAccent),
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(16),
                         borderSide: const BorderSide(color: Colors.white30),
@@ -138,7 +146,8 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                       if (val == null || val.trim().isEmpty) {
                         return 'Enter your Facebook profile link';
                       }
-                      if (!val.contains('facebook.com') && !val.contains('fb.com')) {
+                      if (!val.contains('facebook.com') &&
+                          !val.contains('fb.com')) {
                         return 'Enter a valid Facebook profile URL';
                       }
                       return null;
@@ -151,7 +160,9 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                   ),
                   const SizedBox(height: 32),
                   _isSaving
-                      ? const Center(child: CircularProgressIndicator(color: Colors.cyanAccent))
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                              color: Colors.cyanAccent))
                       : ElevatedButton(
                           onPressed: _saveProfile,
                           style: ElevatedButton.styleFrom(
@@ -164,7 +175,8 @@ class _ProfileInputScreenState extends ConsumerState<ProfileInputScreen> {
                           ),
                           child: const Text(
                             'Save & Continue to Radar',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                                fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                         ),
                 ],

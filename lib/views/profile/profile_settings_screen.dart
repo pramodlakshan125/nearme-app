@@ -1,8 +1,12 @@
-import 'package:firebase_storage/firebase_storage.dart';
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import '../../models/active_session_model.dart';
 import '../../models/user_model.dart';
+import '../../models/private_profile_model.dart';
 import '../../providers/app_providers.dart';
 import '../history/connected_history_screen.dart';
 import '../requests/incoming_requests_sheet.dart';
@@ -20,9 +24,13 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
   late TextEditingController _nameController;
   late TextEditingController _bioController;
   late TextEditingController _fbUrlController;
+  late TextEditingController _phoneController;
   bool _isSaving = false;
   bool _isUploadingPhoto = false;
   bool _isVisible = true;
+  bool _shareFacebook = false;
+  bool _sharePhoneNumber = false;
+  bool _shareBio = false;
   bool _isInitialized = false;
 
   @override
@@ -31,14 +39,19 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     _nameController = TextEditingController();
     _bioController = TextEditingController();
     _fbUrlController = TextEditingController();
+    _phoneController = TextEditingController();
   }
 
-  void _initFields(UserModel user) {
+  void _initFields(UserModel user, PrivateProfileModel privateProfile) {
     if (!_isInitialized) {
       _nameController.text = user.displayName;
-      _bioController.text = user.bio;
-      _fbUrlController.text = user.facebookUrl;
+      _bioController.text = privateProfile.bio;
+      _fbUrlController.text = privateProfile.facebookUrl;
+      _phoneController.text = privateProfile.phoneNumber;
       _isVisible = user.isVisible;
+      _shareFacebook = privateProfile.shareFacebook;
+      _sharePhoneNumber = privateProfile.sharePhoneNumber;
+      _shareBio = privateProfile.shareBio;
       _isInitialized = true;
     }
   }
@@ -48,24 +61,38 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     _nameController.dispose();
     _bioController.dispose();
     _fbUrlController.dispose();
+    _phoneController.dispose();
     super.dispose();
   }
 
-  Future<void> _saveProfile(UserModel currentUser) async {
+  Future<void> _saveProfile(
+    UserModel currentUser,
+    PrivateProfileModel currentPrivateProfile,
+  ) async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isSaving = true);
 
     final updatedUser = currentUser.copyWith(
       displayName: _nameController.text.trim(),
-      bio: _bioController.text.trim(),
-      facebookUrl: _fbUrlController.text.trim(),
       isVisible: _isVisible,
       lastActive: DateTime.now(),
     );
+    final updatedPrivateProfile = PrivateProfileModel(
+      facebookUrl: _fbUrlController.text.trim(),
+      phoneNumber: _phoneController.text.trim(),
+      bio: _bioController.text.trim(),
+      shareFacebook: _shareFacebook,
+      sharePhoneNumber: _sharePhoneNumber,
+      shareBio: _shareBio,
+    );
 
     try {
-      await ref.read(databaseServiceProvider).createOrUpdateUser(updatedUser);
+      await ref.read(databaseServiceProvider).createOrUpdateUser(
+            updatedUser,
+            privateProfile: updatedPrivateProfile,
+          );
+      await _syncRadarVisibility(currentUser);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -89,27 +116,77 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
     }
   }
 
+  Future<void> _syncRadarVisibility(UserModel currentUser) async {
+    if (!ref.read(isScanningProvider) || currentUser.isVisible == _isVisible) {
+      return;
+    }
+    final bleService = ref.read(bleServiceProvider);
+    final dbService = ref.read(databaseServiceProvider);
+    if (_isVisible) {
+      final token = bleService.createDiscoveryToken();
+      await bleService.startAdvertising(token);
+      ref.read(currentDiscoveryTokenProvider.notifier).state = token;
+      await dbService.updateActiveSession(
+        ActiveSessionModel(
+          uid: currentUser.uid,
+          discoveryToken: token,
+          lastSeen: DateTime.now(),
+          isBroadcasting: true,
+        ),
+      );
+    } else {
+      await bleService.stopAdvertising();
+      ref.read(currentDiscoveryTokenProvider.notifier).state = null;
+      await dbService.clearActiveSession(currentUser.uid);
+    }
+  }
+
   Future<void> _changeProfilePhoto(UserModel user) async {
     setState(() => _isUploadingPhoto = true);
     try {
       final image = await ImagePicker().pickImage(
         source: ImageSource.gallery,
         imageQuality: 85,
-        maxWidth: 1200,
-        maxHeight: 1200,
+        maxWidth: 800,
+        maxHeight: 800,
       );
       if (image == null || !mounted) return;
 
-      final metadata = SettableMetadata(
-        contentType: image.mimeType ?? 'image/jpeg',
-      );
-      final photoRef = FirebaseStorage.instance.ref().child(
-          'profile_photos/${user.uid}/${DateTime.now().millisecondsSinceEpoch}');
-      await photoRef.putData(await image.readAsBytes(), metadata);
-      final photoUrl = await photoRef.getDownloadURL();
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse(
+          'https://api.cloudinary.com/v1_1/dnn94io0q/image/upload',
+        ),
+      )
+        ..fields['upload_preset'] = 'nearme_profile'
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'file',
+            await image.readAsBytes(),
+            filename: image.name,
+          ),
+        );
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        throw Exception(
+          'Cloudinary upload failed (${response.statusCode}): ${response.body}',
+        );
+      }
 
-      await ref.read(databaseServiceProvider).createOrUpdateUser(
-            user.copyWith(photoUrl: photoUrl, lastActive: DateTime.now()),
+      final responseData = jsonDecode(response.body);
+      if (responseData is! Map<String, dynamic> ||
+          responseData['secure_url'] is! String ||
+          (responseData['secure_url'] as String).isEmpty) {
+        throw const FormatException(
+          'Cloudinary response did not include a secure_url.',
+        );
+      }
+      final photoUrl = responseData['secure_url'] as String;
+
+      await ref.read(databaseServiceProvider).updateUserPhoto(
+            uid: user.uid,
+            photoUrl: photoUrl,
           );
 
       if (mounted) {
@@ -160,6 +237,11 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
 
     if (confirm == true) {
       final currentUser = ref.read(currentUserModelProvider).value;
+      final bleService = ref.read(bleServiceProvider);
+      bleService.stopScanning();
+      await bleService.stopAdvertising();
+      ref.read(isScanningProvider.notifier).state = false;
+      ref.read(currentDiscoveryTokenProvider.notifier).state = null;
       if (currentUser != null) {
         await ref
             .read(databaseServiceProvider)
@@ -175,6 +257,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserModelProvider);
+    final privateProfileAsync = ref.watch(currentPrivateProfileProvider);
     final acceptedAsync = ref.watch(acceptedConnectionsProvider);
     final incomingAsync = ref.watch(incomingRequestsProvider);
 
@@ -209,8 +292,22 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             );
           }
 
-          _initFields(user);
+          final privateProfile = privateProfileAsync.value;
+          if (privateProfile == null) {
+            if (privateProfileAsync.hasError) {
+              return Center(
+                child: Text(
+                  'Error loading private profile: ${privateProfileAsync.error}',
+                  style: const TextStyle(color: Colors.white70),
+                ),
+              );
+            }
+            return const Center(
+              child: CircularProgressIndicator(color: Colors.cyanAccent),
+            );
+          }
 
+          _initFields(user, privateProfile);
           return SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
@@ -283,7 +380,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                     const SizedBox(height: 12),
                     Center(
                       child: Text(
-                        user.email,
+                        ref.read(authServiceProvider).currentUser?.email ?? '',
                         style: const TextStyle(
                           color: Colors.white60,
                           fontSize: 14,
@@ -523,14 +620,21 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                         ),
                       ),
                     ),
+                    const SizedBox(height: 4),
+                    _shareSetting(
+                      title: 'Share bio after connection',
+                      value: _shareBio,
+                      onChanged: (value) => setState(() => _shareBio = value),
+                    ),
                     const SizedBox(height: 8),
 
-                    Container(
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1A2A3A),
-                        borderRadius: BorderRadius.circular(16),
-                      ),
+                    Material(
+                      color: const Color(0xFF1A2A3A),
+                      borderRadius: BorderRadius.circular(16),
                       child: SwitchListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         value: _isVisible,
                         onChanged: (visible) =>
                             setState(() => _isVisible = visible),
@@ -584,6 +688,40 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                         return null;
                       },
                     ),
+                    const SizedBox(height: 4),
+                    _shareSetting(
+                      title: 'Share Facebook link after connection',
+                      value: _shareFacebook,
+                      onChanged: (value) =>
+                          setState(() => _shareFacebook = value),
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _phoneController,
+                      style: const TextStyle(color: Colors.white),
+                      keyboardType: TextInputType.phone,
+                      decoration: InputDecoration(
+                        labelText: 'Phone number (Optional)',
+                        hintText: '+94 77 123 4567',
+                        hintStyle: const TextStyle(color: Colors.white30),
+                        labelStyle: const TextStyle(color: Colors.white70),
+                        prefixIcon: const Icon(Icons.phone_outlined,
+                            color: Colors.cyanAccent),
+                        filled: true,
+                        fillColor: const Color(0xFF1A2A3A),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(16),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    _shareSetting(
+                      title: 'Share phone number after connection',
+                      value: _sharePhoneNumber,
+                      onChanged: (value) =>
+                          setState(() => _sharePhoneNumber = value),
+                    ),
                     const SizedBox(height: 8),
                     const Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -592,7 +730,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                         SizedBox(width: 6),
                         Expanded(
                           child: Text(
-                            'Your Facebook URL is private and only visible to users whose connection request you accept.',
+                            'Selected contact details are shared only with accepted connections.',
                             style:
                                 TextStyle(color: Colors.white54, fontSize: 12),
                           ),
@@ -608,7 +746,7 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
                                 color: Colors.cyanAccent),
                           )
                         : ElevatedButton.icon(
-                            onPressed: () => _saveProfile(user),
+                            onPressed: () => _saveProfile(user, privateProfile),
                             icon: const Icon(Icons.save_rounded),
                             label: const Text(
                               'Save Changes',
@@ -639,6 +777,24 @@ class _ProfileSettingsScreenState extends ConsumerState<ProfileSettingsScreen> {
             style: const TextStyle(color: Colors.white70),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _shareSetting({
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      dense: true,
+      value: value,
+      onChanged: onChanged,
+      activeThumbColor: Colors.cyanAccent,
+      title: Text(title, style: const TextStyle(color: Colors.white70)),
+      subtitle: const Text(
+        'Only visible to accepted connections',
+        style: TextStyle(color: Colors.white38, fontSize: 12),
       ),
     );
   }

@@ -49,10 +49,30 @@ class NearMeApp extends ConsumerWidget {
           final userModelAsync = ref.watch(currentUserModelProvider);
           return userModelAsync.when(
             data: (userModel) {
-              if (userModel == null || userModel.facebookUrl.isEmpty) {
+              if (userModel == null) {
                 return const ProfileInputScreen();
               }
-              return const RadarDiscoveryScreen();
+              final privateProfileAsync =
+                  ref.watch(currentPrivateProfileProvider);
+              return privateProfileAsync.when(
+                data: (privateProfile) {
+                  if (privateProfile == null ||
+                      privateProfile.facebookUrl.isEmpty) {
+                    return const ProfileInputScreen();
+                  }
+                  return const RadarDiscoveryScreen();
+                },
+                loading: () => const Scaffold(
+                  body: Center(
+                    child: CircularProgressIndicator(color: Colors.cyanAccent),
+                  ),
+                ),
+                error: (err, stack) => Scaffold(
+                  body: Center(
+                    child: Text('Error loading private profile: $err'),
+                  ),
+                ),
+              );
             },
             loading: () => const Scaffold(
               body: Center(
