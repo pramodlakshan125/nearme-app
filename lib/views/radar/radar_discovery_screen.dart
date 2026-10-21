@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
 
@@ -14,8 +15,24 @@ import 'widgets/radar_animation_widget.dart';
 import 'widgets/user_avatar_node.dart';
 import 'widgets/user_profile_sheet.dart';
 
-class RadarDiscoveryScreen extends ConsumerWidget {
+class RadarDiscoveryScreen extends ConsumerStatefulWidget {
   const RadarDiscoveryScreen({super.key});
+
+  @override
+  ConsumerState<RadarDiscoveryScreen> createState() =>
+      _RadarDiscoveryScreenState();
+}
+
+class _RadarDiscoveryScreenState extends ConsumerState<RadarDiscoveryScreen> {
+  @override
+  void dispose() {
+    unawaited(
+      ref.read(nearbyConnectionsProvider).stop().catchError((Object error) {
+        debugPrint('Could not stop Nearby when Radar closed: $error');
+      }),
+    );
+    super.dispose();
+  }
 
   Future<void> _toggleRadar(
     BuildContext context,
@@ -56,7 +73,7 @@ class RadarDiscoveryScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final user = ref.watch(currentUserModelProvider)!;
     final service = ref.watch(nearbyConnectionsProvider);
     final peers = service.peers;

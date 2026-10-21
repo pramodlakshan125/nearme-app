@@ -27,6 +27,8 @@ class NearbyConnectionsService extends ChangeNotifier {
   final Set<String> _requestPayloadSent = {};
   late UserModel _profile;
   bool _scanning = false;
+  bool _isStarting = false;
+  int _lifecycleGeneration = 0;
   bool? _notificationPermissionGranted;
   String? _error;
 
@@ -64,62 +66,117 @@ class NearbyConnectionsService extends ChangeNotifier {
         'Nearby Connections is currently supported on Android only.',
       );
     }
-    if (_scanning) return;
-    _profile = profile;
-    _error = null;
-    final granted = await requestPermissions();
-    if (!granted) {
-      throw StateError('Nearby-device permissions were not granted.');
-    }
-    _notificationPermissionGranted = await _notifications.requestPermission();
+    if (_scanning || _isStarting) return;
+    _isStarting = true;
+    final generation = _lifecycleGeneration;
     try {
-      final name = _endpointName(profile);
-      final results = await Future.wait([
-        if (profile.isVisible)
-          _nearby.startAdvertising(
-            name,
-            Strategy.P2P_CLUSTER,
-            onConnectionInitiated: _onConnectionInitiated,
-            onConnectionResult: _onConnectionResult,
-            onDisconnected: _onDisconnected,
-            serviceId: _serviceId,
-          ),
-        _nearby.startDiscovery(
-          name,
-          Strategy.P2P_CLUSTER,
-          onEndpointFound: _onEndpointFound,
-          onEndpointLost: _onEndpointLost,
-          serviceId: _serviceId,
-        ),
-      ]);
-      if (results.any((started) => !started)) {
-        await _nearby.stopAdvertising();
-        await _nearby.stopDiscovery();
-        throw StateError(
-          'Nearby Connections could not start advertising or discovery.',
-        );
+      _profile = profile;
+      _error = null;
+      final granted = await requestPermissions();
+      if (!granted) {
+        throw StateError('Nearby-device permissions were not granted.');
       }
-      _scanning = true;
-      notifyListeners();
-    } catch (_) {
-      await _nearby.stopAdvertising();
-      await _nearby.stopDiscovery();
-      rethrow;
+      _notificationPermissionGranted = await _notifications.requestPermission();
+      _ensureStartNotCancelled(generation);
+
+      for (var attempt = 0; attempt < 2; attempt++) {
+        try {
+          await _stopNearbyOperations();
+          _ensureStartNotCancelled(generation);
+          await _startNearby(profile, generation);
+          _scanning = true;
+          notifyListeners();
+          return;
+        } catch (error) {
+          await _stopNearbyOperations();
+          if (generation != _lifecycleGeneration) return;
+          if (attempt == 0 && _isAlreadyRunningError(error)) continue;
+          rethrow;
+        }
+      }
+    } finally {
+      _isStarting = false;
     }
   }
 
   Future<void> stop() async {
-    await _nearby.stopAdvertising();
-    await _nearby.stopDiscovery();
-    _scanning = false;
-    _peers.clear();
-    _endpointNames.clear();
-    _connecting.clear();
-    _connected.clear();
-    _pendingOutgoing.clear();
-    _requestPayloadSent.clear();
-    _incomingRequests.clear();
-    notifyListeners();
+    _lifecycleGeneration++;
+    try {
+      await _stopNearbyOperations();
+    } finally {
+      _scanning = false;
+      _peers.clear();
+      _endpointNames.clear();
+      _connecting.clear();
+      _connected.clear();
+      _pendingOutgoing.clear();
+      _requestPayloadSent.clear();
+      _incomingRequests.clear();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _startNearby(UserModel profile, int generation) async {
+    final name = _endpointName(profile);
+    if (profile.isVisible) {
+      final advertisingStarted = await _nearby.startAdvertising(
+        name,
+        Strategy.P2P_CLUSTER,
+        onConnectionInitiated: _onConnectionInitiated,
+        onConnectionResult: _onConnectionResult,
+        onDisconnected: _onDisconnected,
+        serviceId: _serviceId,
+      );
+      _ensureStartNotCancelled(generation);
+      if (!advertisingStarted) {
+        throw StateError('Nearby Connections could not start advertising.');
+      }
+    }
+
+    final discoveryStarted = await _nearby.startDiscovery(
+      name,
+      Strategy.P2P_CLUSTER,
+      onEndpointFound: _onEndpointFound,
+      onEndpointLost: _onEndpointLost,
+      serviceId: _serviceId,
+    );
+    _ensureStartNotCancelled(generation);
+    if (!discoveryStarted) {
+      throw StateError('Nearby Connections could not start discovery.');
+    }
+  }
+
+  void _ensureStartNotCancelled(int generation) {
+    if (generation != _lifecycleGeneration) {
+      throw StateError('Nearby startup was cancelled.');
+    }
+  }
+
+  Future<void> _stopNearbyOperations() async {
+    Object? firstError;
+    StackTrace? firstStackTrace;
+
+    Future<void> stopOperation(Future<void> Function() operation) async {
+      try {
+        await operation();
+      } catch (error, stackTrace) {
+        firstError ??= error;
+        firstStackTrace ??= stackTrace;
+      }
+    }
+
+    await stopOperation(_nearby.stopDiscovery);
+    await stopOperation(_nearby.stopAdvertising);
+    await stopOperation(_nearby.stopAllEndpoints);
+
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError!, firstStackTrace!);
+    }
+  }
+
+  bool _isAlreadyRunningError(Object error) {
+    final message = error.toString();
+    return message.contains('8002') || message.contains('8001');
   }
 
   Future<void> updateProfile(UserModel profile) async {
