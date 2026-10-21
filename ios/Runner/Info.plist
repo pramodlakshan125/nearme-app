@@ -28,8 +28,6 @@
 	<true/>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Choose a profile photo to show on your NearMe profile.</string>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>NearMe uses Bluetooth to find nearby people who are discoverable.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

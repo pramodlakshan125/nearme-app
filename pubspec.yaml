@@ -5,7 +5,8 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.38.1'
 
 dependencies:
   flutter:
@@ -13,16 +14,15 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   flutter_riverpod: ^2.5.1
-  firebase_core: ^3.1.0
-  firebase_auth: ^5.1.0
-  cloud_firestore: ^5.0.1
-  google_sign_in: ^6.2.1
-  flutter_reactive_ble: ^5.3.1
   permission_handler: ^11.3.1
-  url_launcher: ^6.3.0
-  firebase_app_check: ^0.3.2+10
   image_picker: ^1.2.4
-  http: ^1.6.0
+  nearby_connections: ^4.3.0
+  shared_preferences: ^2.5.6
+  path_provider: ^2.1.5
+  image: ^4.5.4
+  device_info_plus: 13.3.0
+  url_launcher: ^6.3.3
+  flutter_local_notifications: ^22.3.2
 
 dev_dependencies:
   flutter_test:

@@ -1,27 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/connection_request_model.dart';
+
 import '../../providers/app_providers.dart';
+import '../../services/nearby_connections_service.dart';
+import '../radar/widgets/user_avatar_node.dart';
 
 class IncomingRequestsSheet extends ConsumerWidget {
   const IncomingRequestsSheet({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final requestsAsync = ref.watch(incomingRequestsProvider);
-    final dbService = ref.watch(databaseServiceProvider);
-
+    final service = ref.watch(nearbyConnectionsProvider);
+    final requests = service.incomingRequests;
     return Container(
-      padding: const EdgeInsets.all(20.0),
+      padding: const EdgeInsets.all(20),
       constraints: BoxConstraints(
-        maxHeight: MediaQuery.of(context).size.height * 0.7,
+        maxHeight: MediaQuery.sizeOf(context).height * .7,
+        minHeight: 220,
       ),
       decoration: const BoxDecoration(
-        color: Color(0xFF1A2A3A),
+        color: Color(0xFF111719),
         borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Center(
@@ -38,94 +39,101 @@ class IncomingRequestsSheet extends ConsumerWidget {
           const Text(
             'Connection Requests',
             style: TextStyle(
+              color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
-              color: Colors.white,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           Expanded(
-            child: requestsAsync.when(
-              data: (requests) {
-                if (requests.isEmpty) {
-                  return const Center(
+            child: requests.isEmpty
+                ? const Center(
                     child: Text(
                       'No pending connection requests',
                       style: TextStyle(color: Colors.white54),
                     ),
-                  );
-                }
-                return ListView.separated(
-                  itemCount: requests.length,
-                  separatorBuilder: (_, __) => const Divider(color: Colors.white12),
-                  itemBuilder: (context, index) {
-                    final req = requests[index];
-                    return ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: CircleAvatar(
-                        backgroundImage: req.senderPhotoUrl.isNotEmpty
-                            ? NetworkImage(req.senderPhotoUrl)
-                            : null,
-                        backgroundColor: Colors.cyan.shade900,
-                        child: req.senderPhotoUrl.isEmpty
-                            ? Text(
-                                req.senderName.isNotEmpty
-                                    ? req.senderName[0].toUpperCase()
-                                    : '?',
-                                style: const TextStyle(color: Colors.white),
-                              )
-                            : null,
-                      ),
-                      title: Text(
-                        req.senderName,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
+                  )
+                : ListView.separated(
+                    itemCount: requests.length,
+                    separatorBuilder: (_, __) =>
+                        const Divider(color: Colors.white12),
+                    itemBuilder: (context, index) {
+                      final request = requests[index];
+                      return Card(
+                        margin: EdgeInsets.zero,
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 4,
+                          ),
+                          leading: UserAvatarNode(
+                            user: request.toUser(),
+                            onTap: () {},
+                          ),
+                          title: Text(
+                            request.displayName,
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: const Text('Wants to connect with you'),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                tooltip: 'Accept',
+                                icon: const Icon(
+                                  Icons.check_circle,
+                                  color: Colors.greenAccent,
+                                ),
+                                onPressed: () => _respond(
+                                  context,
+                                  service,
+                                  request.endpointId,
+                                  accept: true,
+                                ),
+                              ),
+                              IconButton(
+                                tooltip: 'Reject',
+                                icon: const Icon(
+                                  Icons.cancel,
+                                  color: Colors.redAccent,
+                                ),
+                                onPressed: () => _respond(
+                                  context,
+                                  service,
+                                  request.endpointId,
+                                  accept: false,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      subtitle: const Text(
-                        'Wants to connect with you',
-                        style: TextStyle(color: Colors.white60, fontSize: 12),
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.check_circle,
-                                color: Colors.greenAccent),
-                            onPressed: () async {
-                              await dbService.updateRequestStatus(
-                                req.requestId,
-                                RequestStatus.accepted,
-                              );
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.cancel, color: Colors.redAccent),
-                            onPressed: () async {
-                              await dbService.updateRequestStatus(
-                                req.requestId,
-                                RequestStatus.rejected,
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-              loading: () => const Center(
-                child: CircularProgressIndicator(color: Colors.cyanAccent),
-              ),
-              error: (err, stack) => Center(
-                child: Text('Error: $err',
-                    style: const TextStyle(color: Colors.redAccent)),
-              ),
-            ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _respond(
+    BuildContext context,
+    NearbyConnectionsService service,
+    String endpointId, {
+    required bool accept,
+  }) async {
+    try {
+      if (accept) {
+        await service.acceptRequest(endpointId);
+      } else {
+        await service.rejectRequest(endpointId);
+      }
+    } catch (error) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not respond to request: $error')),
+        );
+      }
+    }
   }
 }

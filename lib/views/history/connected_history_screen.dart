@@ -1,440 +1,161 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../../providers/app_providers.dart';
-import '../radar/widgets/user_profile_sheet.dart';
 
-class ConnectedHistoryScreen extends ConsumerStatefulWidget {
+import '../../providers/app_providers.dart';
+
+class ConnectedHistoryScreen extends ConsumerWidget {
   const ConnectedHistoryScreen({super.key});
 
   @override
-  ConsumerState<ConnectedHistoryScreen> createState() =>
-      _ConnectedHistoryScreenState();
-}
-
-class _ConnectedHistoryScreenState
-    extends ConsumerState<ConnectedHistoryScreen> {
-  final TextEditingController _searchController = TextEditingController();
-  String _searchQuery = '';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  Future<void> _launchUrl(String url) async {
-    final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Could not open Facebook link')),
-        );
-      }
-    }
-  }
-
-  void _copyToClipboard(String text) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Profile link copied to clipboard!'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-  }
-
-  Future<void> _confirmDisconnect(
-      BuildContext context, ConnectedAccount account) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A2A3A),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Disconnect Account',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        content: Text(
-          'Are you sure you want to disconnect with ${account.otherUser.displayName}? This will remove them from your connected history.',
-          style: const TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child:
-                const Text('Cancel', style: TextStyle(color: Colors.white60)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Disconnect'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirm == true) {
-      await ref
-          .read(databaseServiceProvider)
-          .removeConnection(account.request.requestId);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Disconnected from ${account.otherUser.displayName}'),
-          ),
-        );
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final connectedAccountsAsync = ref.watch(connectedAccountsProvider);
-
+  Widget build(BuildContext context, WidgetRef ref) {
+    final contacts = ref.watch(nearbyConnectionsProvider).acceptedContacts;
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2027),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF0F2027),
-        elevation: 0,
-        title: const Text(
-          'Connected Accounts',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-      ),
-      body: SafeArea(
-        child: Column(
-          children: [
-            // Search Bar
-            Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
-              child: TextField(
-                controller: _searchController,
-                style: const TextStyle(color: Colors.white),
-                onChanged: (val) {
-                  setState(() {
-                    _searchQuery = val.trim().toLowerCase();
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Search connections by name...',
-                  hintStyle: const TextStyle(color: Colors.white38),
-                  prefixIcon:
-                      const Icon(Icons.search, color: Colors.cyanAccent),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.clear, color: Colors.white54),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _searchQuery = '');
-                          },
-                        )
-                      : null,
-                  filled: true,
-                  fillColor: const Color(0xFF1A2A3A),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
+      appBar: AppBar(title: const Text('Connected History')),
+      body: contacts.isEmpty
+          ? const Center(
+              child: Text(
+                'Accepted connections will appear here.',
+                style: TextStyle(color: Colors.white60),
               ),
-            ),
-
-            // Content List
-            Expanded(
-              child: connectedAccountsAsync.when(
-                data: (accounts) {
-                  final filtered = accounts.where((acc) {
-                    if (_searchQuery.isEmpty) return true;
-                    return acc.otherUser.displayName
-                        .toLowerCase()
-                        .contains(_searchQuery);
-                  }).toList();
-
-                  if (filtered.isEmpty) {
-                    return _buildEmptyState(accounts.isEmpty);
+            )
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
+              itemCount: contacts.length,
+              separatorBuilder: (_, __) => const Divider(color: Colors.white12),
+              itemBuilder: (context, index) {
+                final contact = contacts[index];
+                ImageProvider? photo;
+                if (contact.photoData.isNotEmpty) {
+                  try {
+                    photo = MemoryImage(base64Decode(contact.photoData));
+                  } on FormatException {
+                    photo = null;
                   }
-
-                  return ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16.0, vertical: 8.0),
-                    itemCount: filtered.length,
-                    itemBuilder: (context, index) {
-                      final item = filtered[index];
-                      return _buildConnectionCard(context, item);
-                    },
-                  );
-                },
-                loading: () => const Center(
-                  child: CircularProgressIndicator(color: Colors.cyanAccent),
-                ),
-                error: (err, stack) => Center(
-                  child: Text(
-                    'Error loading connections: $err',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(bool isCompletelyEmpty) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.cyanAccent.withValues(alpha: 0.1),
-              ),
-              child: const Icon(
-                Icons.people_outline,
-                size: 64,
-                color: Colors.cyanAccent,
-              ),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              isCompletelyEmpty
-                  ? 'No Connected Accounts Yet'
-                  : 'No Matches Found',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              isCompletelyEmpty
-                  ? 'When you accept proximity connection requests on the Radar, your friends and their unlocked social links will appear here.'
-                  : 'Try searching with a different name.',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white60, fontSize: 14),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildConnectionCard(BuildContext context, ConnectedAccount item) {
-    final user = item.otherUser;
-    final sharedProfile = ref.watch(sharedProfileProvider(user.uid)).value;
-    final facebookUrl = sharedProfile?.facebookUrl ?? '';
-    final phoneNumber = sharedProfile?.phoneNumber ?? '';
-    final bio = sharedProfile?.bio ?? '';
-    final dateStr =
-        '${item.request.timestamp.day}/${item.request.timestamp.month}/${item.request.timestamp.year}';
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1A2A3A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.cyanAccent.withValues(alpha: 0.25),
-        ),
-      ),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: () {
-          showModalBottomSheet(
-            context: context,
-            isScrollControlled: true,
-            backgroundColor: Colors.transparent,
-            builder: (_) => UserProfileSheet(nearbyUser: user),
-          );
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  CircleAvatar(
-                    radius: 26,
-                    backgroundImage: user.photoUrl.isNotEmpty
-                        ? NetworkImage(user.photoUrl)
-                        : null,
-                    backgroundColor: Colors.cyan.shade900,
-                    child: user.photoUrl.isEmpty
-                        ? Text(
-                            user.displayName.isNotEmpty
-                                ? user.displayName[0].toUpperCase()
-                                : '?',
-                            style: const TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.white),
-                          )
-                        : null,
-                  ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          user.displayName,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 17,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        if (bio.isNotEmpty) ...[
-                          const SizedBox(height: 2),
-                          Text(
-                            bio,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
-                        ],
-                        const SizedBox(height: 4),
-                        Row(
-                          children: [
-                            const Icon(Icons.check_circle,
-                                size: 14, color: Colors.greenAccent),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Connected $dateStr',
-                              style: const TextStyle(
-                                  color: Colors.white54, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      ],
+                }
+                return Card(
+                  margin: EdgeInsets.zero,
+                  child: ListTile(
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
                     ),
-                  ),
-                  PopupMenuButton<String>(
-                    icon: const Icon(Icons.more_vert, color: Colors.white60),
-                    color: const Color(0xFF1E3246),
-                    onSelected: (val) {
-                      if (val == 'disconnect') {
-                        _confirmDisconnect(context, item);
-                      } else if (val == 'copy') {
-                        if (facebookUrl.isNotEmpty) {
-                          _copyToClipboard(facebookUrl);
-                        }
-                      }
-                    },
-                    itemBuilder: (ctx) => [
-                      if (facebookUrl.isNotEmpty)
-                        const PopupMenuItem(
-                          value: 'copy',
-                          child: Row(
-                            children: [
-                              Icon(Icons.copy, size: 18, color: Colors.white70),
-                              SizedBox(width: 10),
-                              Text('Copy Link',
-                                  style: TextStyle(color: Colors.white)),
-                            ],
-                          ),
-                        ),
-                      const PopupMenuItem(
-                        value: 'disconnect',
-                        child: Row(
-                          children: [
-                            Icon(Icons.person_remove,
-                                size: 18, color: Colors.redAccent),
-                            SizedBox(width: 10),
-                            Text('Disconnect',
-                                style: TextStyle(color: Colors.redAccent)),
-                          ],
-                        ),
+                    leading: CircleAvatar(
+                      backgroundColor: const Color(0xFF17383A),
+                      backgroundImage: photo,
+                      child: photo == null
+                          ? Text(
+                              contact.displayName.isNotEmpty
+                                  ? contact.displayName[0].toUpperCase()
+                                  : '?',
+                              style: const TextStyle(
+                                color: Color(0xFFB9EEEE),
+                                fontWeight: FontWeight.w600,
+                              ),
+                            )
+                          : null,
+                    ),
+                    title: Text(
+                      contact.displayName,
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    subtitle: Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        [
+                          if (contact.facebookUrl.isNotEmpty)
+                            'Facebook: ${contact.facebookUrl}',
+                          if (contact.phoneNumber.isNotEmpty)
+                            'Phone: ${contact.phoneNumber}',
+                          if (contact.facebookUrl.isEmpty &&
+                              contact.phoneNumber.isEmpty)
+                            'No contact details shared',
+                        ].join('\n'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              if (facebookUrl.isNotEmpty)
-                Container(
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1877F2).withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: const Color(0xFF1877F2).withValues(alpha: 0.4)),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () => _launchUrl(facebookUrl),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 12, vertical: 10),
-                            child: Row(
-                              children: [
-                                const Icon(Icons.facebook,
-                                    color: Color(0xFF1877F2), size: 22),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    facebookUrl,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      color: Colors.cyanAccent,
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                      decoration: TextDecoration.underline,
-                                      decorationColor: Colors.cyanAccent,
-                                    ),
+                    ),
+                    trailing:
+                        contact.facebookUrl.isEmpty &&
+                            contact.phoneNumber.isEmpty
+                        ? null
+                        : Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (contact.facebookUrl.isNotEmpty)
+                                IconButton(
+                                  tooltip: 'Open Facebook',
+                                  icon: const Icon(Icons.facebook),
+                                  onPressed: () => _openFacebook(
+                                    context,
+                                    contact.facebookUrl,
                                   ),
                                 ),
-                                const Icon(Icons.open_in_new,
-                                    size: 16, color: Colors.cyanAccent),
-                              ],
-                            ),
+                              PopupMenuButton<String>(
+                                tooltip: 'Copy contact detail',
+                                icon: const Icon(Icons.copy),
+                                onSelected: (value) async {
+                                  await Clipboard.setData(
+                                    ClipboardData(text: value),
+                                  );
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Contact detail copied'),
+                                      ),
+                                    );
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  if (contact.facebookUrl.isNotEmpty)
+                                    PopupMenuItem(
+                                      value: contact.facebookUrl,
+                                      child: const Text('Copy Facebook URL'),
+                                    ),
+                                  if (contact.phoneNumber.isNotEmpty)
+                                    PopupMenuItem(
+                                      value: contact.phoneNumber,
+                                      child: const Text('Copy phone number'),
+                                    ),
+                                ],
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.copy,
-                            size: 18, color: Colors.white70),
-                        tooltip: 'Copy Facebook link',
-                        onPressed: () => _copyToClipboard(facebookUrl),
-                      ),
-                    ],
                   ),
-                ),
-              if (phoneNumber.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8),
-                  child: OutlinedButton.icon(
-                    onPressed: () => launchUrl(
-                      Uri(scheme: 'tel', path: phoneNumber),
-                    ),
-                    icon: const Icon(Icons.phone, color: Colors.greenAccent),
-                    label: Text(
-                      phoneNumber,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ),
+                );
+              },
+            ),
     );
+  }
+}
+
+Future<void> _openFacebook(BuildContext context, String facebookUrl) async {
+  final uri = Uri.tryParse(facebookUrl);
+  if (uri == null ||
+      !uri.hasScheme ||
+      (uri.scheme != 'https' && uri.scheme != 'http') ||
+      !(uri.host == 'facebook.com' || uri.host.endsWith('.facebook.com'))) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('This Facebook link is invalid')),
+    );
+    return;
+  }
+
+  try {
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Could not open Facebook')));
+    }
+  } catch (error) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open Facebook: $error')),
+      );
+    }
   }
 }

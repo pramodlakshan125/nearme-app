@@ -1,176 +1,44 @@
+import 'dart:io';
 import 'dart:math' as math;
-import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../models/active_session_model.dart';
+
 import '../../models/user_model.dart';
 import '../../providers/app_providers.dart';
+import '../../services/nearby_connections_service.dart';
+import '../history/connected_history_screen.dart';
+import '../profile/profile_input_screen.dart';
 import '../requests/incoming_requests_sheet.dart';
-import '../profile/profile_settings_screen.dart';
 import 'widgets/radar_animation_widget.dart';
 import 'widgets/user_avatar_node.dart';
 import 'widgets/user_profile_sheet.dart';
 
-class RadarDiscoveryScreen extends ConsumerStatefulWidget {
+class RadarDiscoveryScreen extends ConsumerWidget {
   const RadarDiscoveryScreen({super.key});
 
-  @override
-  ConsumerState<RadarDiscoveryScreen> createState() =>
-      _RadarDiscoveryScreenState();
-}
-
-class _RadarDiscoveryScreenState extends ConsumerState<RadarDiscoveryScreen> {
-  Timer? _presenceHeartbeat;
-
-  @override
-  void dispose() {
-    _presenceHeartbeat?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _toggleDiscovery(BuildContext context) async {
-    final bleService = ref.read(bleServiceProvider);
-    final dbService = ref.read(databaseServiceProvider);
-    final isScanning = ref.read(isScanningProvider);
-    final currentUser = ref.read(currentUserModelProvider).value;
-
-    if (currentUser == null) return;
-
-    if (!isScanning) {
-      final granted = await bleService.requestPermissions();
-      if (!granted) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                  'Bluetooth and nearby-device permissions are required for Radar discovery'),
-            ),
-          );
-        }
-        return;
-      }
-
-      try {
-        await bleService.startScanning();
-        if (currentUser.isVisible) {
-          await _startPresence(currentUser.uid);
-        }
-        ref.read(isScanningProvider.notifier).state = true;
-        _presenceHeartbeat?.cancel();
-        _presenceHeartbeat = Timer.periodic(
-          const Duration(seconds: 20),
-          (_) => _refreshPresence(),
-        );
-      } catch (error) {
-        bleService.stopScanning();
-        try {
-          await bleService.stopAdvertising();
-        } catch (cleanupError) {
-          debugPrint('BLE advertising cleanup failed: $cleanupError');
-        }
-        ref.read(currentDiscoveryTokenProvider.notifier).state = null;
-        ref.read(isScanningProvider.notifier).state = false;
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                error is TimeoutException
-                    ? 'Turn on Bluetooth and try again.'
-                    : 'Could not start Radar: $error',
-              ),
-            ),
-          );
-        }
-      }
-    } else {
-      bleService.stopScanning();
-      try {
-        await bleService.stopAdvertising();
-        await dbService.clearActiveSession(currentUser.uid);
-      } catch (error) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Could not stop Radar cleanly: $error')),
-          );
-        }
-      } finally {
-        _presenceHeartbeat?.cancel();
-        _presenceHeartbeat = null;
-        ref.read(currentDiscoveryTokenProvider.notifier).state = null;
-        ref.read(isScanningProvider.notifier).state = false;
-      }
-    }
-  }
-
-  Future<void> _startPresence(String uid) async {
-    final bleService = ref.read(bleServiceProvider);
-    final dbService = ref.read(databaseServiceProvider);
-    final token = bleService.createDiscoveryToken();
-    await bleService.startAdvertising(token);
-    ref.read(currentDiscoveryTokenProvider.notifier).state = token;
-
-    await dbService.updateActiveSession(
-      ActiveSessionModel(
-        uid: uid,
-        discoveryToken: token,
-        lastSeen: DateTime.now(),
-        isBroadcasting: true,
-      ),
-    );
-  }
-
-  Future<void> _refreshPresence() async {
-    final user = ref.read(currentUserModelProvider).value;
-    final token = ref.read(currentDiscoveryTokenProvider);
-    if (user == null || token == null || !user.isVisible) return;
+  Future<void> _toggleRadar(
+    BuildContext context,
+    UserModel profile,
+    NearbyConnectionsService service,
+  ) async {
     try {
-      await ref.read(databaseServiceProvider).updateActiveSession(
-            ActiveSessionModel(
-              uid: user.uid,
-              discoveryToken: token,
-              lastSeen: DateTime.now(),
-              isBroadcasting: true,
-            ),
-          );
-    } catch (error) {
-      debugPrint('Radar presence update failed: $error');
-    }
-  }
-
-  Future<void> _signOut() async {
-    try {
-      if (ref.read(isScanningProvider)) {
-        await _toggleDiscovery(context);
+      if (service.isScanning) {
+        await service.stop();
       } else {
-        await ref.read(bleServiceProvider).stopAdvertising();
-        final currentUser = ref.read(currentUserModelProvider).value;
-        if (currentUser != null) {
-          await ref
-              .read(databaseServiceProvider)
-              .clearActiveSession(currentUser.uid);
-        }
+        await service.start(profile);
       }
-      await ref.read(authServiceProvider).signOut();
     } catch (error) {
-      if (mounted) {
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not stop Radar: $error')),
+          SnackBar(content: Text('Could not start Radar: $error')),
         );
       }
     }
   }
 
-  void _openUserProfileSheet(BuildContext context, UserModel nearbyUser) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => UserProfileSheet(nearbyUser: nearbyUser),
-    );
-  }
-
-  void _openRequestsSheet(BuildContext context) {
-    showModalBottomSheet(
+  void _showRequests(BuildContext context) {
+    showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -178,267 +46,222 @@ class _RadarDiscoveryScreenState extends ConsumerState<RadarDiscoveryScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final currentUser = ref.watch(currentUserModelProvider).value;
-    final isScanning = ref.watch(isScanningProvider);
-    final nearbyUsersAsync = ref.watch(nearbyUsersProvider);
-    final incomingRequestsAsync = ref.watch(incomingRequestsProvider);
+  void _showPeer(BuildContext context, UserModel user) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => UserProfileSheet(nearbyUser: user),
+    );
+  }
 
-    final incomingCount = incomingRequestsAsync.value?.length ?? 0;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final user = ref.watch(currentUserModelProvider)!;
+    final service = ref.watch(nearbyConnectionsProvider);
+    final peers = service.peers;
+    final incomingCount = service.incomingRequests.length;
+    final hasPhoto =
+        user.photoPath.isNotEmpty && File(user.photoPath).existsSync();
 
     return Scaffold(
-      backgroundColor: const Color(0xFF0F2027),
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: Tooltip(
-          message: 'Profile & Settings',
-          child: InkWell(
-            borderRadius: BorderRadius.circular(24),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const ProfileSettingsScreen(),
+        titleSpacing: 12,
+        title: InkWell(
+          borderRadius: BorderRadius.circular(24),
+          onTap: () => Navigator.of(
+            context,
+          ).push(MaterialPageRoute(builder: (_) => const ProfileInputScreen())),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 19,
+                backgroundImage: hasPhoto
+                    ? FileImage(File(user.photoPath))
+                    : null,
+                backgroundColor: const Color(0xFF17383A),
+                child: hasPhoto
+                    ? null
+                    : Text(
+                        user.displayName[0].toUpperCase(),
+                        style: const TextStyle(
+                          color: Color(0xFFB9EEEE),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
-            ),
-            child: Row(
-              children: [
-                CircleAvatar(
-                  radius: 18,
-                  backgroundImage: currentUser?.photoUrl.isNotEmpty == true
-                      ? NetworkImage(currentUser!.photoUrl)
-                      : null,
-                  child: currentUser?.photoUrl.isEmpty == true
-                      ? Text(
-                          currentUser?.displayName.isNotEmpty == true
-                              ? currentUser!.displayName[0].toUpperCase()
-                              : 'U',
-                        )
-                      : null,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    currentUser?.displayName ?? 'NearMe',
-                    style: const TextStyle(fontSize: 16, color: Colors.white),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(user.displayName, overflow: TextOverflow.ellipsis),
+              ),
+            ],
           ),
         ),
         actions: [
+          IconButton(
+            tooltip: 'Connected history',
+            icon: const Icon(Icons.people_alt_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ConnectedHistoryScreen()),
+            ),
+          ),
           Stack(
             children: [
               IconButton(
-                icon: const Icon(Icons.notifications, color: Colors.cyanAccent),
-                onPressed: () => _openRequestsSheet(context),
+                tooltip: 'Connection requests',
+                icon: const Icon(Icons.notifications_outlined),
+                onPressed: () => _showRequests(context),
               ),
               if (incomingCount > 0)
                 Positioned(
                   right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.redAccent,
-                      shape: BoxShape.circle,
-                    ),
+                  top: 7,
+                  child: CircleAvatar(
+                    radius: 8,
+                    backgroundColor: Colors.redAccent,
                     child: Text(
                       '$incomingCount',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: const TextStyle(fontSize: 10),
                     ),
                   ),
                 ),
             ],
-          ),
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.white70),
-            onPressed: _signOut,
           ),
         ],
       ),
       body: SafeArea(
         child: Column(
           children: [
-            const SizedBox(height: 10),
-            // Header status
+            const SizedBox(height: 8),
             Text(
-              isScanning
-                  ? 'Radar Scanning Active...'
-                  : 'Radar Idle - Tap button to discover nearby people',
+              !Platform.isAndroid
+                  ? 'Nearby device discovery is supported on Android only.'
+                  : service.isScanning
+                  ? 'Searching for nearby devices'
+                  : 'Discover people around you',
               style: TextStyle(
-                color: isScanning ? Colors.cyanAccent : Colors.white60,
+                color: service.isScanning
+                    ? const Color(0xFF8DDADC)
+                    : Colors.white60,
                 fontSize: 14,
                 fontWeight: FontWeight.w500,
               ),
             ),
-            const SizedBox(height: 10),
-
-            // Radar Visual Area
-            Expanded(
-              child: nearbyUsersAsync.when(
-                data: (users) {
-                  return LayoutBuilder(
-                    builder: (context, constraints) {
-                      final center = Offset(
-                        constraints.maxWidth / 2,
-                        constraints.maxHeight / 2,
-                      );
-                      final radius = math.min(
-                              constraints.maxWidth, constraints.maxHeight) *
-                          0.38;
-
-                      return RadarAnimationWidget(
-                        isScanning: isScanning,
-                        child: Stack(
-                          children: [
-                            // Center User Icon
-                            Center(
-                              child: Container(
-                                padding: const EdgeInsets.all(4),
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color:
-                                      Colors.cyanAccent.withValues(alpha: 0.2),
-                                  border: Border.all(
-                                      color: Colors.cyanAccent, width: 2),
-                                ),
-                                child: CircleAvatar(
-                                  radius: 20,
-                                  backgroundImage:
-                                      currentUser?.photoUrl.isNotEmpty == true
-                                          ? NetworkImage(currentUser!.photoUrl)
-                                          : null,
-                                  child: currentUser?.photoUrl.isEmpty == true
-                                      ? const Icon(Icons.person,
-                                          color: Colors.white)
-                                      : null,
-                                ),
-                              ),
-                            ),
-
-                            // Plot Nearby Users in radial positions around radar
-                            ...users.asMap().entries.map((entry) {
-                              final index = entry.key;
-                              final user = entry.value;
-
-                              // Calculate position angle & distance
-                              final angle = (index *
-                                      (2 *
-                                          math.pi /
-                                          math.max(users.length, 1))) +
-                                  0.5;
-                              final distanceRatio = 0.4 + ((index % 3) * 0.25);
-                              final posX = center.dx +
-                                  (radius * distanceRatio * math.cos(angle)) -
-                                  30;
-                              final posY = center.dy +
-                                  (radius * distanceRatio * math.sin(angle)) -
-                                  30;
-
-                              return Positioned(
-                                left: posX,
-                                top: posY,
-                                child: UserAvatarNode(
-                                  user: user,
-                                  onTap: () =>
-                                      _openUserProfileSheet(context, user),
-                                ),
-                              );
-                            }),
-                          ],
-                        ),
-                      );
-                    },
-                  );
-                },
-                loading: () => const Center(
-                  child: CircularProgressIndicator(color: Colors.cyanAccent),
-                ),
-                error: (err, stack) => Center(
-                  child: Text('Error: $err',
-                      style: const TextStyle(color: Colors.redAccent)),
+            if (service.error != null)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Text(
+                  service.error!,
+                  style: const TextStyle(color: Colors.orangeAccent),
+                  textAlign: TextAlign.center,
                 ),
               ),
+            if (service.notificationPermissionGranted == false)
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 8, 24, 0),
+                child: Text(
+                  'Notifications are off. Enable them in Android app settings '
+                  'to hear about requests while NearMe is in the background.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Color(0xFFFFCC80), fontSize: 12),
+                ),
+              ),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final center = Offset(
+                    constraints.maxWidth / 2,
+                    constraints.maxHeight / 2,
+                  );
+                  final radius =
+                      math.min(constraints.maxWidth, constraints.maxHeight) *
+                      0.38;
+                  return RadarAnimationWidget(
+                    isScanning: service.isScanning,
+                    child: Stack(
+                      children: [
+                        Center(
+                          child: CircleAvatar(
+                            radius: 28,
+                            backgroundImage: hasPhoto
+                                ? FileImage(File(user.photoPath))
+                                : null,
+                            child: hasPhoto
+                                ? null
+                                : const Icon(Icons.person, color: Colors.white),
+                          ),
+                        ),
+                        ...peers.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final angle =
+                              index * (2 * math.pi / peers.length) + .5;
+                          final ratio = .4 + (index % 3) * .2;
+                          return Positioned(
+                            left:
+                                center.dx +
+                                radius * ratio * math.cos(angle) -
+                                30,
+                            top:
+                                center.dy +
+                                radius * ratio * math.sin(angle) -
+                                34,
+                            child: UserAvatarNode(
+                              user: entry.value,
+                              onTap: () => _showPeer(context, entry.value),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  );
+                },
+              ),
             ),
-
-            // Nearby People Horizontal List View below radar
-            Container(
+            SizedBox(
               height: 100,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              color: Colors.black26,
-              child: nearbyUsersAsync.when(
-                data: (users) {
-                  if (users.isEmpty) {
-                    return const Center(
+              child: peers.isEmpty
+                  ? const Center(
                       child: Text(
                         'No nearby users discovered yet.',
-                        style: TextStyle(color: Colors.white38, fontSize: 13),
+                        style: TextStyle(color: Colors.white38),
                       ),
-                    );
-                  }
-                  return ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: users.length,
-                    itemBuilder: (context, index) {
-                      final u = users[index];
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 16),
-                        child: UserAvatarNode(
-                          user: u,
-                          onTap: () => _openUserProfileSheet(context, u),
-                        ),
-                      );
-                    },
-                  );
-                },
-                loading: () => const SizedBox.shrink(),
-                error: (_, __) => const SizedBox.shrink(),
-              ),
+                    )
+                  : ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      children: [
+                        for (final peer in peers)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 16),
+                            child: UserAvatarNode(
+                              user: peer,
+                              onTap: () => _showPeer(context, peer),
+                            ),
+                          ),
+                      ],
+                    ),
             ),
-
-            const SizedBox(height: 16),
-
-            // "Discover Nearby People" Button
             Padding(
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 24.0, vertical: 8.0),
+              padding: const EdgeInsets.fromLTRB(24, 10, 24, 20),
               child: ElevatedButton.icon(
-                onPressed: () => _toggleDiscovery(context),
+                onPressed: Platform.isAndroid
+                    ? () => _toggleRadar(context, user, service)
+                    : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor:
-                      isScanning ? Colors.redAccent : Colors.cyanAccent,
-                  foregroundColor: isScanning ? Colors.white : Colors.black,
-                  minimumSize: const Size.fromHeight(54),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(28),
-                  ),
-                  elevation: 6,
+                  backgroundColor: service.isScanning
+                      ? const Color(0xFF713B41)
+                      : const Color(0xFF16777B),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(56),
                 ),
                 icon: Icon(
-                  isScanning ? Icons.stop_circle : Icons.radar,
-                  size: 26,
+                  service.isScanning ? Icons.stop_circle : Icons.radar,
                 ),
                 label: Text(
-                  isScanning
-                      ? 'Stop Radar Discovery'
-                      : 'Discover Nearby People',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  service.isScanning ? 'Stop Radar' : 'Discover Nearby People',
                 ),
               ),
             ),
-            const SizedBox(height: 12),
           ],
         ),
       ),
